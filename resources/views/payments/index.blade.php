@@ -1,7 +1,7 @@
 @extends('payments/main')
 @section('main_content')
     <h2>Add cash to account</h2>
-    <form method="post" action="{{route('payment.create')}}">
+    <form method="POST" action="{{route('payment.create')}}">
         @csrf
         <label for="amount">amount RUB</label><br>
         <input type="number" name="amount"><br>
@@ -29,7 +29,9 @@
                     <td>{{$transaction->amount}}</td>
                     <td>{{$transaction->description}}</td>
                     <td>{{$transaction->status}}</td>
-                    <td>{{$transaction->updatet_at->format('d-m-Y H:i')}}</td>
+                    <td>@if($transaction->updatet_at)
+                            {{$transaction->updatet_at->format('d-m-Y H:i')}}
+                    @endif</td>
                 </tr>
             @empty
                 <tr>

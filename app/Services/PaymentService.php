@@ -2,14 +2,24 @@
 
 namespace App\Services;
 
+use App\Enums\PaymentStatusEnum;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use YooKassa\Client;
+use YooKassa\Model\Notification\NotificationSucceeded;
+use YooKassa\Model\Notification\NotificationWaitingForCapture;
+use YooKassa\Model\NotificationEventType;
+use App\Contracts\PaymentContract;
 
-class PaymentService {
+class PaymentService implements PaymentContract {
+
+    public $status = PaymentStatusEnum::CREATED;
+    public $url_payment = '/';
 
     public function getClient(): Client {
 
         $client = new Client();
-        $client->setAuth(config('services.yookassa.shop_id'), config('services.yookassa.secret_key'));
+        $client->setAuth(config('yookassa.shop_id'), config('yookassa.secret_key'));
 
         return $client;
     }
@@ -29,7 +39,8 @@ class PaymentService {
      * @throws \YooKassa\Common\Exceptions\TooManyRequestsException
      * @throws \YooKassa\Common\Exceptions\UnauthorizedException
      */
-    public function createPayment(float $amount, string $description, array $options) {
+    //по хорошему обработать ошибки которые могут проброситься, а также проверить что это действительно ссылка.
+    public function createTransaction($amount, $description, $options) : bool {
 
         $client = $this->getClient();
         $payment = $client->createPayment([
@@ -48,6 +59,51 @@ class PaymentService {
             'description' => $description
         ], uniqid('', true));
 
-        return $payment->getConfirmation()->getConfirmationUrl();
+        if($payment) {
+            $this->url_payment = $payment->getConfirmation()->getConfirmationUrl();
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    public function callback(Request $request) : array {
+
+        $transaction_data = [
+            'transactionId' => 0,
+            'amount' => 0
+        ];
+
+        $source = file_get_contents('php://input');
+        $requestBody = json_decode($source, true);
+
+        $notification = (isset($requestBody['event']) && $requestBody['event'] === NotificationEventType::PAYMENT_SUCCEEDED)
+            ? new NotificationSucceeded($requestBody)
+            : new NotificationWaitingForCapture($requestBody);
+        $payment = $notification->getObject();
+
+        if(isset($payment->status) && $payment->status === 'waiting_for_capture') {
+            $this->getClient()->capturePayment(['amount' => $payment->amount], $payment->id, uniqid('', true));
+        } elseif(isset($payment->status) && ($payment->status === 'succeeded') && ((bool)$payment->paid === true)) {
+            $this->status = PaymentStatusEnum::CONFIRMED;
+            $metadata = (object)$payment->metadata;
+
+            if (isset($metadata->transaction_id)) {
+                $transaction_data['transactionId'] = (int)$metadata->transaction_id;
+                $transaction_data['amount'] = $payment->amount->value ? (float)$payment->amount->value : 0;
+            }
+        }
+
+        return $transaction_data;
+    }
+
+    public function getStatus() : string {
+
+        return $this->status;
+    }
+
+    public function getUrlPayment() : string {
+
+        return $this->url_payment;
     }
 }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="{{mix('app.css', 'assets/css/', true)}}">
+    <link rel="stylesheet" href="assets/css/app.fa3dfaa7.css">
 </head>
 <body>
     @include('flash_message')
